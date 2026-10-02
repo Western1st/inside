@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Insider Buys</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one header, a single filter bar, and a full-width sortable table of purchases. */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#14181d; --muted:#5b6673; --line:#dce1e7; --soft:#eaeef2;
+  --accent:#0b6f8f; --accent-ink:#ffffff; --good:#16805a; --bad:#bf3a3a; --warn:#8a5a00; --warn-bg:#fbf1da;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1216; --surface:#151b21; --ink:#e5e9ed; --muted:#8e99a5; --line:#252f38; --soft:#1c242c;
+  --accent:#4fb8d8; --accent-ink:#06222c; --good:#43c18c; --bad:#ee6d6d; --warn:#e0b04a; --warn-bg:#2a2412; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1216; --surface:#151b21; --ink:#e5e9ed; --muted:#8e99a5; --line:#252f38; --soft:#1c242c;
+  --accent:#4fb8d8; --accent-ink:#06222c; --good:#43c18c; --bad:#ee6d6d; --warn:#e0b04a; --warn-bg:#2a2412; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:16px 40px}
+.wrap{max-width:1300px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 16px}
+h1{font-size:22px;font-weight:600;letter-spacing:-.01em;margin:0}
+.sub{color:var(--muted);margin:0;font-size:13px}
+.banner{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn);border-radius:6px;padding:9px 12px;font-size:13px}
+.bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:end;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+.bar label{display:flex;flex-direction:column;gap:3px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+select,input[type=search],input[type=number]{font:inherit;font-family:var(--mono);font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);min-width:0}
+input[type=search]{width:170px}input[type=number]{width:110px}
+.chk{flex-direction:row!important;align-items:center;gap:7px!important;text-transform:none!important;letter-spacing:0!important;font-size:13px!important;color:var(--ink)!important;padding-bottom:6px}
+input[type=checkbox]{accent-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sum{display:flex;flex-wrap:wrap;gap:6px 22px;color:var(--muted);font-size:13px}
+.sum b{color:var(--ink);font-family:var(--mono);font-weight:500}
+.tbl{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--surface)}
+th[aria-sort]::after{content:" ▾";color:var(--accent)}th[aria-sort=ascending]::after{content:" ▴"}
+th.n,td.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+td.co{white-space:normal;min-width:170px;max-width:260px}
+.tk{font-family:var(--mono);font-weight:500}
+.mut{color:var(--muted);font-size:12px}
+.pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;font-family:var(--mono);border:1px solid var(--line);margin-left:6px;vertical-align:1px}
+.pill.cl{color:var(--accent-ink);background:var(--accent);border-color:var(--accent);font-weight:500}
+.pill.new{color:var(--good);border-color:var(--good)}
+a{color:var(--accent)}
+.empty{padding:36px 16px;text-align:center;color:var(--muted)}
+.foot{color:var(--muted);font-size:12px}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Insider Buys</h1>
+    <p class="sub" id="upd">Loading…</p>
+  </header>
+  <div id="banner" class="banner" hidden></div>
+  <div class="bar">
+    <label>Filed<select id="win"><option value="today">Today</option><option value="3">Last 3 days</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="120">Last 120 days</option></select></label>
+    <label>Min value ($)<input type="number" id="minv" value="25000" min="0" step="5000"></label>
+    <label>Who<select id="role"><option value="all">Anyone</option><option value="off">Officers (CEO, CFO, President…)</option><option value="dir">Directors</option><option value="ten">10% owners</option></select></label>
+    <label>Search<input type="search" id="q" placeholder="Ticker or name"></label>
+    <label class="chk"><input type="checkbox" id="cluster"> Only clusters (2+ insiders)</label>
+  </div>
+  <div class="sum" id="sum"></div>
+  <div class="tbl"><table id="tbl"><thead><tr id="head"></tr></thead><tbody id="body"></tbody></table></div>
+  <p class="foot">Source: SEC EDGAR Form 4 filings, open-market purchases only (transaction code P). Awards, option exercises, gifts and sales are left out. A purchase is reported up to two business days after the trade, and a cluster counts different insiders buying the same company within the selected window. Not investment advice.</p>
+</div>
+
+<script>
+"use strict";
+const COLS=[
+ {k:'filed',l:'Filed (ET)',get:r=>r._filed},
+ {k:'ticker',l:'Ticker',get:r=>r.ticker},
+ {k:'company',l:'Company',get:r=>r.company},
+ {k:'owner',l:'Insider',get:r=>r.owner},
+ {k:'role',l:'Role',get:r=>r._role},
+ {k:'shares',l:'Shares',n:1,get:r=>r.shares},
+ {k:'price',l:'Price',n:1,get:r=>r.price},
+ {k:'value',l:'Value',n:1,get:r=>r.value},
+ {k:'pct',l:'Holdings +%',n:1,get:r=>r.pctIncrease==null?-1:r.pctIncrease},
+ {k:'link',l:'Filing',get:()=>0,nosort:1}
+];
+let DATA={rows:[]},sortK='filed',sortDir=-1;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money=x=>x>=1e6?'$'+(x/1e6).toFixed(2)+'M':x>=1e3?'$'+Math.round(x/1e3).toLocaleString()+'K':'$'+Math.round(x);
+const ET=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+const ETD=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'});
+function ago(ms){const m=Math.round((Date.now()-ms)/60000);if(m<1)return 'just now';if(m<60)return m+' min ago';if(m<1440)return Math.round(m/60)+' h ago';return Math.round(m/1440)+' d ago'}
+function prep(rows,sample){
+  const now=Date.now();
+  return rows.map(r=>{
+    const x=Object.assign({},r);
+    x._t=sample?now-r.ageMin*60000:Date.parse(r.filed)||0;
+    x._filed=x._t;
+    x._role=r.title||(r.isDirector?'Director':r.isTenPercentOwner?'10% owner':r.isOfficer?'Officer':'');
+    x._off=r.isOfficer||/chief|ceo|cfo|coo|president|chair|officer|treasurer/i.test(r.title||'');
+    return x;
+  });
+}
+function filtered(){
+  const win=$('win').value,minv=+$('minv').value||0,role=$('role').value,q=$('q').value.trim().toLowerCase();
+  const today=ETD.format(new Date());
+  let rows=DATA.rows.filter(r=>{
+    if(win==='today'){if(ETD.format(new Date(r._t))!==today)return false}
+    else if(Date.now()-r._t>(+win)*864e5)return false;
+    if(r.value<minv)return false;
+    if(role==='off'&&!r._off)return false;
+    if(role==='dir'&&!r.isDirector)return false;
+    if(role==='ten'&&!r.isTenPercentOwner)return false;
+    if(q&&!(r.ticker.toLowerCase().includes(q)||r.company.toLowerCase().includes(q)||r.owner.toLowerCase().includes(q)))return false;
+    return true;
+  });
+  const cl={};rows.forEach(r=>{(cl[r.ticker]??=new Set()).add(r.owner)});
+  rows.forEach(r=>r._cl=cl[r.ticker].size);
+  if($('cluster').checked)rows=rows.filter(r=>r._cl>=2);
+  return rows;
+}
+function render(){
+  const rows=filtered(),col=COLS.find(c=>c.k===sortK);
+  rows.sort((a,b)=>{const x=col.get(a),y=col.get(b);return (x>y?1:x<y?-1:0)*sortDir});
+  $('head').innerHTML=COLS.map(c=>`<th class="${c.n?'n':''}" data-k="${c.k}" ${c.k===sortK?`aria-sort="${sortDir<0?'descending':'ascending'}"`:''} ${c.nosort?'':'tabindex="0"'}>${c.l}</th>`).join('');
+  $('head').querySelectorAll('th').forEach(th=>{const k=th.dataset.k;if(k==='link')return;const go=()=>{if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=(k==='ticker'||k==='company'||k==='owner'||k==='role')?1:-1}render()};th.onclick=go;th.onkeydown=e=>{if(e.key==='Enter')go()}});
+  const tickers=new Set(rows.map(r=>r.ticker)),tot=rows.reduce((s,r)=>s+r.value,0),cls=new Set(rows.filter(r=>r._cl>=2).map(r=>r.ticker));
+  $('sum').innerHTML=`<span><b>${rows.length}</b> purchases</span><span><b>${tickers.size}</b> companies</span><span><b>${money(tot)}</b> total bought</span><span><b>${cls.size}</b> with clusters</span>`;
+  $('body').innerHTML=rows.length?rows.map(r=>`<tr>
+    <td>${ET.format(new Date(r._t))}<div class="mut">${ago(r._t)}</div></td>
+    <td><span class="tk">${esc(r.ticker)}</span>${r._cl>=2?`<span class="pill cl" title="Different insiders buying within the selected window">${r._cl} insiders</span>`:''}</td>
+    <td class="co">${esc(r.company)}</td><td class="co">${esc(r.owner)}</td><td class="co">${esc(r._role)}</td>
+    <td class="n">${r.shares.toLocaleString()}</td><td class="n">$${r.price.toFixed(2)}</td><td class="n"><b>${money(r.value)}</b></td>
+    <td class="n">${r.pctIncrease==null?'<span class="mut">n/a</span>':'+'+r.pctIncrease+'%'}</td>
+    <td>${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">SEC</a>`:'<span class="mut">demo</span>'}</td></tr>`).join('')
+    :`<tr><td colspan="${COLS.length}" class="empty">No purchases match these filters. Try a longer time window or a lower minimum value.</td></tr>`;
+}
+async function load(){
+  try{
+    const res=await fetch('data/filings.json?'+Date.now(),{cache:'no-store'});
+    const j=await res.json();
+    DATA={rows:prep(j.rows||[],!!j.sample),sample:!!j.sample,updated:j.updated};
+  }catch(e){
+    DATA={rows:[],sample:false,updated:null};$('upd').textContent='Could not load data/filings.json';
+  }
+  const b=$('banner');
+  b.hidden=!DATA.sample;
+  if(DATA.sample)b.textContent='Showing made-up demo data (fictional companies). Real purchases replace it after the collector runs for the first time.';
+  if(!DATA.sample)$('upd').textContent=DATA.updated?'Updated '+ET.format(new Date(DATA.updated))+' ET':'No data yet';
+  else $('upd').textContent='Demo data';
+  render();
+}
+['win','minv','role','q','cluster'].forEach(id=>$(id).addEventListener('input',render));
+load();setInterval(load,5*60*1000);
+</script>
+
+</body>
+</html>

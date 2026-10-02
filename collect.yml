@@ -1,0 +1,39 @@
+name: Collect insider buys
+
+on:
+  schedule:
+    # every 10 minutes, weekdays, 8am-7pm US Eastern (runs in UTC; covers daylight and standard time)
+    - cron: '*/10 12-23 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch new Form 4 filings
+        run: python collector.py
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      - name: Email alerts
+        run: python alerts.py
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SITE_URL: https://western1st.github.io/inside/
+      - name: Save results
+        run: |
+          git config user.name "insider-bot"
+          git config user.email "insider-bot@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || (git commit -m "Update insider buys" && git pull --rebase -q && git push)

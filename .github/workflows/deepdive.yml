@@ -10,6 +10,10 @@ on:
         description: 'Tickers to deep dive, separated by spaces (leave empty for recent big insider buys)'
         required: false
         default: ''
+  # TEMPORARY: test runs on the feature branch; remove before merging
+  push:
+    branches: ['claude/**']
+    paths: ['deepdive.py', '.github/workflows/deepdive.yml']
 
 permissions:
   contents: write
@@ -30,7 +34,7 @@ jobs:
         run: python deepdive.py
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
-          TICKERS: ${{ github.event.inputs.tickers }}
+          TICKERS: ${{ github.event_name == 'push' && 'NVDA AAPL MU AVGO' || github.event.inputs.tickers }}
       - name: Save results
         run: |
           git config user.name "insider-bot"

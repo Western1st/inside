@@ -58,7 +58,7 @@ a{color:var(--accent)}
 <body>
 <div class="wrap">
   <header>
-    <h1>Insider Buys</h1>
+    <h1>Insider Buys <a href="company.html" style="font-size:13px;font-weight:400;margin-left:8px">Company deep dive &rarr;</a></h1>
     <p class="sub" id="upd">Loading…</p>
   </header>
   <div id="banner" class="banner" hidden></div>
@@ -133,7 +133,7 @@ function render(){
   $('sum').innerHTML=`<span><b>${rows.length}</b> purchases</span><span><b>${tickers.size}</b> companies</span><span><b>${money(tot)}</b> total bought</span><span><b>${cls.size}</b> with clusters</span>`;
   $('body').innerHTML=rows.length?rows.map(r=>`<tr>
     <td>${ET.format(new Date(r._t))}<div class="mut">${ago(r._t)}</div></td>
-    <td><span class="tk">${esc(r.ticker)}</span>${r._cl>=2?`<span class="pill cl" title="Different insiders buying within the selected window">${r._cl} insiders</span>`:''}</td>
+    <td><a class="tk" href="company.html?t=${encodeURIComponent(r.ticker)}" title="Deep dive: customers, suppliers, holders">${esc(r.ticker)}</a>${r._cl>=2?`<span class="pill cl" title="Different insiders buying within the selected window">${r._cl} insiders</span>`:''}</td>
     <td class="co">${esc(r.company)}</td><td class="co">${esc(r.owner)}</td><td class="co">${esc(r._role)}</td>
     <td class="n">${r.shares.toLocaleString()}</td><td class="n">$${r.price.toFixed(2)}</td><td class="n"><b>${money(r.value)}</b></td>
     <td class="n">${r.pctIncrease==null?'<span class="mut">n/a</span>':'+'+r.pctIncrease+'%'}</td>

@@ -1,0 +1,39 @@
+name: Company deep dives
+
+on:
+  schedule:
+    # once each weekday evening (US Eastern): deep dive the companies with big recent insider buys
+    - cron: '37 23 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: 'Tickers to deep dive, separated by spaces (leave empty for recent big insider buys)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deepdive
+  cancel-in-progress: false
+
+jobs:
+  deepdive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build deep dives
+        run: python deepdive.py
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          TICKERS: ${{ github.event.inputs.tickers }}
+      - name: Save results
+        run: |
+          git config user.name "insider-bot"
+          git config user.email "insider-bot@users.noreply.github.com"
+          git add data/company
+          git diff --cached --quiet || (git commit -m "Update company deep dives" && git pull --rebase -q && git push)

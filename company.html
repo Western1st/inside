@@ -298,6 +298,8 @@ function supTable(d){
   const v=d.suppliers.filter(s=>s.verified),u=d.suppliers.filter(s=>!s.verified);
   let h=v.length?`<div class="tbl"><table><thead><tr><th>Supplier</th><th class="n">${esc(d.ticker)} = % of its sales</th><th>10-K</th></tr></thead><tbody>${v.map(s=>`<tr><td>${s.ticker?`<a href="?t=${encodeURIComponent(s.ticker)}">${esc(s.ticker)}</a> `:''}${esc(s.name)}</td><td class="n">${pct(s.pct)||'–'}${s.amount?' · '+money(s.amount):''}</td><td><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.filed)}</a></td></tr>`).join('')}</tbody></table></div>`
     :none(`No other company's recent 10-K names ${esc(d.searchName||d.ticker)} as a major customer.`);
+  const sc=d.supplierConcentration||[];
+  if(sc.length)h+=`<p class="mut" style="margin:10px 0 0">${esc(d.ticker)}'s own 10-K also reports: ${sc.map(c=>`${esc(c.name)} ${pct(c.pct)} of ${esc(c.benchmark)}`).join('; ')}${sc.some(c=>/^vendor/i.test(c.name)&&c.benchmark==='receivables')?' (money suppliers owe it, e.g. for parts it sells them)':''}</p>`;
   if(u.length)h+=`<p class="mut" style="margin:10px 0 0">Also mention ${esc(d.searchName)} near "major customer", not confirmed: ${u.slice(0,12).map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.ticker||s.name)}</a>`).join(', ')}</p>`;
   return h;
 }

@@ -79,6 +79,7 @@ def nice(member, labels):
     lab = labels.get(member) or ""
     if not lab or (" " not in lab and lab.endswith("Member")):
         lab = camel_words(member)
+    lab = re.sub(r"\s*\[?Member\]?$", "", lab)
     return COUNTRIES.get(lab, lab)
 
 

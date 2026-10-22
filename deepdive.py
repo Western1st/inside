@@ -6,7 +6,7 @@ Usage: python deepdive.py AAPL NVDA ...      (or with no tickers: auto-pick rece
 Writes data/company/<TICKER>.json and data/company/index.json. Uses only the Python standard library.
 Needs SEC_USER_AGENT, same as collector.py.
 """
-import json, os, re, sys, time, urllib.parse
+import json, os, re, sys, urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
@@ -229,13 +229,16 @@ def latest_10k(subs):
     return None
 
 
-def filing_concentration(cik, accession, ua):
+def filing_concentration(cik, accession, ua, with_segments=False):
     folder, inst, lab = filing_files(cik, accession, ua)
     if not inst:
-        return [], folder
+        return ([], folder, {}) if with_segments else ([], folder)
     xml = fetch(f"{folder}/{inst}", ua)
     labels = member_labels(fetch(f"{folder}/{lab}", ua)) if lab else {}
-    return (concentration(xml, labels) if xml else []), folder
+    rows = concentration(xml, labels) if xml else []
+    if with_segments:
+        return rows, folder, (segments(xml, labels) if xml else {})
+    return rows, folder
 
 
 # ---------- suppliers: other companies' 10-Ks that name this company as a customer ----------
@@ -337,6 +340,147 @@ def insider_activity(cik, subs, ua):
     return out
 
 
+# ---------- revenue by segment, product and region (same 10-K instance) ----------
+
+SEGMENT_AXES = {"StatementBusinessSegmentsAxis": "segment", "ProductOrServiceAxis": "product",
+                "StatementGeographicalAxis": "region"}
+
+
+def segments(instance_xml, labels=None):
+    """Latest full-year revenue split by one dimension. Returns {kind: [{name, amount}]}."""
+    labels = labels or {}
+    try:
+        root = ET.fromstring(instance_xml)
+    except ET.ParseError:
+        return {}
+    ctx = {}
+    for c in root.findall(XBRLI + "context"):
+        dims = {m.get("dimension", "").split(":")[-1]: (m.text or "").strip().split(":")[-1]
+                for m in c.iter(XBRLDI + "explicitMember")}
+        if len(dims) != 1:
+            continue
+        axis, member = next(iter(dims.items()))
+        if axis not in SEGMENT_AXES:
+            continue
+        p = c.find(XBRLI + "period")
+        start, end = _txt(p, XBRLI + "startDate"), _txt(p, XBRLI + "endDate")
+        if not start or not 350 <= (datetime.fromisoformat(end) - datetime.fromisoformat(start)).days <= 380:
+            continue
+        ctx[c.get("id")] = (SEGMENT_AXES[axis], member, end)
+    best = {}
+    for el in root:
+        local = el.tag.rsplit("}", 1)[-1]
+        if local not in REVENUE_TAGS or el.get("contextRef") not in ctx:
+            continue
+        kind, member, end = ctx[el.get("contextRef")]
+        val = _num(el.text)
+        if val is None:
+            continue
+        key = (kind, member)
+        # prefer the newest year, then the revenue tag listed first
+        rank = (end, -REVENUE_TAGS.index(local))
+        if key not in best or rank > best[key][0]:
+            best[key] = (rank, val)
+    out = {}
+    for (kind, member), ((end, _), val) in best.items():
+        out.setdefault(kind, []).append({"name": labels.get(member) or camel_words(member),
+                                         "amount": val, "period": end})
+    for kind, rows in out.items():
+        latest = max(r["period"] for r in rows)
+        out[kind] = sorted([r for r in rows if r["period"] == latest and r["amount"] > 0],
+                           key=lambda r: -r["amount"])[:12]
+    return out
+
+
+# ---------- activist and large stakes (Schedules 13D and 13G) ----------
+
+STAKE_FORMS = ("SC 13D", "SC 13D/A", "SC 13G", "SC 13G/A", "SCHEDULE 13D", "SCHEDULE 13D/A",
+               "SCHEDULE 13G", "SCHEDULE 13G/A")
+MAX_STAKES = 15
+
+
+def stake_filings(cik, subs, ua, now):
+    """Who has reported owning 5%+ of the company in the last two years, newest filing per holder."""
+    rec = (subs or {}).get("filings", {}).get("recent", {})
+    since = (now - timedelta(days=730)).strftime("%Y-%m-%d")
+    out, seen = [], set()
+    for i, form in enumerate(rec.get("form", [])):
+        if len(out) >= MAX_STAKES:
+            break
+        if form not in STAKE_FORMS or rec["filingDate"][i] < since:
+            continue
+        acc = rec["accessionNumber"][i]
+        folder = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc.replace('-', '')}"
+        hdr = fetch(f"{folder}/{acc}.hdr.sgml", ua) or ""
+        m = re.search(r"<FILED-BY>.*?<CONFORMED-NAME>([^\n<]+)", hdr, re.S)
+        filer = m.group(1).strip() if m else ""
+        if not filer or filer in seen:
+            continue
+        seen.add(filer)
+        pct = None
+        doc = rec.get("primaryDocument", [""] * (i + 1))[i]
+        body = fetch(f"{folder}/{doc.split('/')[-1]}", ua) if doc else None
+        if body:
+            m = re.search(r"<(?:\w+:)?(?:percentOfClass|classPercent|percentOfClassRepresented)[^>]*>\s*([\d.]+)", body, re.I) \
+                or re.search(r"percent\s+of\s+class[^%]{0,300}?([\d]{1,2}(?:\.\d+)?)\s*%", re.sub(r"<[^>]+>", " ", body), re.I | re.S)
+            if m:
+                pct = _num(m.group(1))
+        out.append({"holder": filer.title() if filer.isupper() else filer, "form": form,
+                    "activist": "13D" in form, "pct": pct, "filed": rec["filingDate"][i], "url": folder + "/"})
+    return out
+
+
+# ---------- short interest (FINRA) and institutional holders (Nasdaq) ----------
+
+BROWSER_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
+
+
+def http_json(url, headers, payload=None):
+    """One plain request outside SEC. Returns parsed JSON or None; these sources are best effort."""
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(url, data=data, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read().decode("utf-8", errors="replace") or "null")
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        return None
+
+
+def short_interest(ticker):
+    rows = http_json("https://api.finra.org/data/group/otcMarket/name/consolidatedShortInterest",
+                     {"Accept": "application/json", "Content-Type": "application/json"},
+                     {"fields": ["settlementDate", "currentShortPositionQuantity", "averageDailyVolumeQuantity",
+                                 "daysToCoverQuantity", "changePercent"],
+                      "domainFilters": [{"fieldName": "symbolCode", "values": [ticker.replace(".", "").replace("-", "")]}],
+                      "limit": 5000})
+    if not isinstance(rows, list) or not rows:
+        return []
+    rows.sort(key=lambda r: r.get("settlementDate", ""))
+    return [{"date": r.get("settlementDate"), "shares": r.get("currentShortPositionQuantity"),
+             "daysToCover": r.get("daysToCoverQuantity"), "changePct": r.get("changePercent")} for r in rows[-12:]]
+
+
+def _n(s):
+    return _num(re.sub(r"[^\d.\-]", "", str(s or ""))) if s not in (None, "") else None
+
+
+def institutions(ticker):
+    data = http_json(f"https://api.nasdaq.com/api/company/{ticker}/institutional-holdings"
+                     "?limit=15&type=TOTAL&sortColumn=marketValue&sortOrder=DESC",
+                     {"Accept": "application/json, text/plain, */*", "User-Agent": BROWSER_UA,
+                      "Origin": "https://www.nasdaq.com", "Referer": "https://www.nasdaq.com/"})
+    d = (data or {}).get("data") or {}
+    table = d.get("holdingsTransactions") or {}
+    rows = table.get("rows") or (table.get("table") or {}).get("rows") or []
+    summ = d.get("ownershipSummary") or {}
+    pct = _n((summ.get("SharesOutstandingPCT") or {}).get("value"))
+    holders = [{"name": r.get("ownerName", ""), "date": r.get("date", ""), "shares": _n(r.get("sharesHeld")),
+                "change": _n(r.get("sharesChange")), "changePct": _n(r.get("sharesChangePCT")),
+                "value": _n(r.get("marketValue"))} for r in rows if r.get("ownerName")]
+    return {"pctHeld": pct, "holders": holders}
+
+
 # ---------- putting it together ----------
 
 def ticker_map(ua):
@@ -351,7 +495,7 @@ def build(ticker, cik, ua, now):
     facts = get_json(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json", ua)
     name = subs.get("name", ticker)
     tenk = latest_10k(subs)
-    rows, folder = filing_concentration(cik, tenk["accession"], ua) if tenk else ([], "")
+    rows, folder, segs = filing_concentration(cik, tenk["accession"], ua, True) if tenk else ([], "", {})
     fin = financials(facts)
     rev_latest = fin["revenue"][-1][1] if fin["revenue"] else None
     for r in rows:   # fill in a dollar estimate when only a percent of revenue is reported
@@ -362,6 +506,9 @@ def build(ticker, cik, ua, now):
         r["named"] = is_named(r["name"])
     suppliers, search_name = find_suppliers(name, cik, ua, now)
     trades = insider_activity(cik, subs, ua)
+    stakes = stake_filings(cik, subs, ua, now)
+    shorts = short_interest(ticker)
+    inst = institutions(ticker)
     year_ago = (now - timedelta(days=365)).strftime("%Y-%m-%d")
     recent = [t for t in trades if t["date"] >= year_ago]
     addr = subs.get("addresses", {}).get("business", {})
@@ -381,6 +528,10 @@ def build(ticker, cik, ua, now):
         "customers": [r for r in rows if r["kind"] == "customer"],
         "supplierConcentration": [r for r in rows if r["kind"] == "supplier"],
         "suppliers": suppliers,
+        "segments": segs,
+        "stakes": stakes,
+        "shortInterest": shorts,
+        "institutions": inst,
         "insiders": {
             "trades": trades,
             "bought12m": sum(t["value"] for t in recent if t["type"] == "buy"),

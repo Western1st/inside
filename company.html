@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Company Deep Dive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: header with search, company title and key numbers, the relationship map, then detail sections. */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#14181d; --muted:#5b6673; --line:#dce1e7; --soft:#eaeef2;
+  --accent:#0b6f8f; --accent-ink:#ffffff; --good:#16805a; --bad:#bf3a3a; --warn:#8a5a00; --warn-bg:#fbf1da;
+  --cus:#2a78d6; --hold:#eb6834; --sup:#1baf7a; --edge:#9aa6b2;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1216; --surface:#151b21; --ink:#e5e9ed; --muted:#8e99a5; --line:#252f38; --soft:#1c242c;
+  --accent:#4fb8d8; --accent-ink:#06222c; --good:#43c18c; --bad:#ee6d6d; --warn:#e0b04a; --warn-bg:#2a2412;
+  --cus:#3987e5; --hold:#d95926; --sup:#199e70; --edge:#4a5763; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1216; --surface:#151b21; --ink:#e5e9ed; --muted:#8e99a5; --line:#252f38; --soft:#1c242c;
+  --accent:#4fb8d8; --accent-ink:#06222c; --good:#43c18c; --bad:#ee6d6d; --warn:#e0b04a; --warn-bg:#2a2412;
+  --cus:#3987e5; --hold:#d95926; --sup:#199e70; --edge:#4a5763; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:16px 40px;margin:0}
+.wrap{max-width:1300px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+header a{font-size:13px}
+form.find{display:flex;gap:6px}
+input[type=search]{font:inherit;font-family:var(--mono);font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink);width:170px;text-transform:uppercase}
+button{font:inherit;font-size:13px;padding:6px 12px;border-radius:4px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1{font-size:24px;font-weight:600;letter-spacing:-.01em;margin:0}
+h1 .tk{font-family:var(--mono);font-weight:500;color:var(--accent);margin-right:10px}
+h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 10px}
+.sub{color:var(--muted);margin:2px 0 0;font-size:13px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.stat .l{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font-family:var(--mono);font-size:19px;font-weight:500;margin-top:2px}
+.stat .d{font-size:12px;color:var(--muted)}
+.up{color:var(--good)}.down{color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.chip{display:inline-flex;align-items:center;gap:7px;font-size:13px;padding:4px 10px;border:1px solid var(--line);border-radius:99px;cursor:pointer;user-select:none;background:var(--bg)}
+.chip input{position:absolute;opacity:0;pointer-events:none}
+.chip .dot{width:10px;height:10px;border-radius:50%}
+.chip:has(input:not(:checked)){opacity:.45}
+.chip:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.mapbox{position:relative;width:100%}
+svg#map{display:block;width:100%;height:auto;overflow:visible}
+svg text{font-family:var(--sans);fill:var(--ink)}
+svg .gh{font-size:11px;letter-spacing:.06em;text-transform:uppercase;fill:var(--muted);font-weight:600}
+svg .nm{font-size:12px}
+svg .sm{font-size:11px;fill:var(--muted);font-family:var(--mono)}
+svg .none{font-size:12px;fill:var(--muted);font-style:italic}
+svg .edge{fill:none;stroke:var(--edge);stroke-opacity:.75;transition:stroke-opacity .15s}
+svg .node{cursor:pointer}
+svg .node circle{stroke:var(--surface);stroke-width:2}
+svg .node.anon circle{fill-opacity:.45}
+svg .node:focus{outline:none}
+svg .node:focus-visible circle,svg .node.sel circle{stroke:var(--ink);stroke-width:2.5}
+svg.dim .edge{stroke-opacity:.15}
+svg.dim .node{opacity:.35}
+svg.dim .edge.sel{stroke-opacity:1;stroke:var(--ink)}
+svg.dim .node.sel,svg.dim .center{opacity:1}
+.center circle{fill:var(--accent)}
+.center text{fill:var(--accent-ink);font-family:var(--mono);font-weight:500}
+#detail{min-height:58px}
+#detail .t{font-weight:600;font-size:15px}
+#detail .r{color:var(--muted);font-size:13px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:14px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;white-space:nowrap}
+th.n,td.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mut{color:var(--muted);font-size:12px}
+.pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;font-family:var(--mono);border:1px solid var(--line);margin-left:6px;vertical-align:1px;white-space:nowrap}
+.pill.act{border-color:var(--hold);color:var(--ink)}
+.bars{display:flex;flex-direction:column;gap:7px}
+.bar{display:grid;grid-template-columns:minmax(90px,38%) 1fr auto;gap:10px;align-items:center;font-size:13px}
+.bar .tr{height:12px;background:var(--soft);border-radius:4px;overflow:hidden}
+.bar .fl{height:100%;background:var(--cus);border-radius:0 4px 4px 0}
+.bar .vv{font-family:var(--mono);font-size:12px;min-width:56px;text-align:right}
+.bar .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spark{display:flex;align-items:flex-end;gap:2px;height:56px;margin-top:8px}
+.spark i{flex:1;background:var(--hold);border-radius:4px 4px 0 0;min-height:2px}
+.seg-h{font-size:12px;color:var(--muted);margin:10px 0 6px}
+.seg-h:first-child{margin-top:0}
+a{color:var(--accent)}
+.empty{padding:28px 16px;text-align:center;color:var(--muted)}
+.foot{color:var(--muted);font-size:12px}
+.banner{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn);border-radius:6px;padding:9px 12px;font-size:13px}
+@media (forced-colors: active){svg .node circle{stroke:CanvasText}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a href="./">&larr; Insider Buys</a>
+    <form class="find" id="find">
+      <input type="search" id="q" list="known" placeholder="Ticker, e.g. NVDA" aria-label="Ticker" autocomplete="off">
+      <datalist id="known"></datalist>
+      <button type="submit">Open</button>
+    </form>
+  </header>
+  <div id="main"><p class="sub">Loading…</p></div>
+</div>
+
+<script>
+"use strict";
+const REPO='Western1st/inside';
+const RUN_URL=`https://github.com/${REPO}/actions/workflows/deepdive.yml`;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money=x=>{if(x==null||isNaN(x))return '–';const a=Math.abs(x),s=x<0?'-':'';return s+(a>=1e9?'$'+(a/1e9).toFixed(2)+'B':a>=1e6?'$'+(a/1e6).toFixed(1)+'M':a>=1e3?'$'+Math.round(a/1e3)+'K':'$'+Math.round(a))};
+const num=x=>{if(x==null)return '–';const a=Math.abs(x),s=x<0?'-':'';return s+(a>=1e9?(a/1e9).toFixed(2)+'B':a>=1e6?(a/1e6).toFixed(1)+'M':a>=1e3?Math.round(a/1e3)+'K':String(Math.round(a)))};
+const pct=x=>x==null?'':(+x).toFixed(1).replace(/\.0$/,'')+'%';
+const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
+const yr=d=>d?d.slice(0,4):'';
+let INDEX={},D=null,NODES=[],SEL=null;
+const SHOW={sup:true,cus:true,ins:true,hold:true};
+
+/* ---------- build the nodes of the map from the deep dive ---------- */
+function buildNodes(d){
+  const n=[];
+  d.customers.filter(c=>c.benchmark==='revenue'||!d.customers.some(o=>o.member===c.member&&o.benchmark==='revenue'))
+   .slice(0,8).forEach((c,i)=>n.push({id:'c'+i,g:'cus',name:c.named?c.name:'Unnamed: '+c.name,anon:!c.named,
+     val:c.amount||c.pct||1,w:(c.pct||5)/100,
+     sub:[c.pct!=null?pct(c.pct)+(c.benchmark==='revenue'?' of sales':' of '+c.benchmark):'',c.amount?(c.estimated?'≈':'')+money(c.amount):''].filter(Boolean).join(' · '),
+     rel:`Buys from ${d.ticker}`,detail:custDetail(c,d),ticker:tickerFor(c.name)}));
+  d.suppliers.filter(s=>s.verified).slice(0,8).forEach((s,i)=>n.push({id:'s'+i,g:'sup',name:s.name,val:s.pct||1,w:(s.pct||5)/100,
+     sub:[s.ticker,s.pct!=null?pct(s.pct)+' of its sales':''].filter(Boolean).join(' · '),
+     rel:`Sells to ${d.ticker}`,detail:`${esc(s.name)} names ${esc(d.name)} as a major customer in its 10-K filed ${esc(s.filed)}${s.pct!=null?`: ${pct(s.pct)} of its ${esc(s.benchmark||'revenue')}`:''}${s.amount?` (${money(s.amount)})`:''}. <a href="${esc(s.url)}" target="_blank" rel="noopener">Filing</a>`,ticker:s.ticker}));
+  const by={};
+  (d.insiders.trades||[]).forEach(t=>{if(Date.now()-Date.parse(t.date)>365*864e5)return;const o=by[t.owner]??={owner:t.owner,role:t.role,buy:0,sell:0,n:0};o[t.type]+=t.value;o.n++});
+  Object.values(by).sort((a,b)=>(b.buy+b.sell)-(a.buy+a.sell)).slice(0,6).forEach((o,i)=>{const net=o.buy-o.sell;
+    n.push({id:'i'+i,g:'ins',name:o.owner,val:o.buy+o.sell,w:.04,pos:net>=0,
+      sub:(net>=0?'Net bought ':'Net sold ')+money(Math.abs(net)),rel:o.role||'Insider',
+      detail:`${esc(o.owner)}${o.role?', '+esc(o.role):''}. Last 12 months: bought ${money(o.buy)}, sold ${money(o.sell)} across ${o.n} filing${o.n>1?'s':''} (open-market only).`})});
+  const holders=[],seen=new Set(),key=s=>s.toLowerCase().replace(/[^a-z]/g,'').slice(0,10);
+  (d.stakes||[]).forEach(s=>{if(seen.has(key(s.holder)))return;seen.add(key(s.holder));
+    holders.push({name:s.holder,val:s.pct||5,w:(s.pct||5)/100,act:s.activist,
+      sub:[pct(s.pct),s.activist?'13D activist':'13G passive'].filter(Boolean).join(' · '),
+      rel:s.activist?'Activist stake (13D)':'5%+ holder (13G)',
+      detail:`${esc(s.holder)} filed a ${esc(s.form)} on ${esc(s.filed)}${s.pct!=null?`, reporting ${pct(s.pct)} of the stock`:''}. ${s.activist?'A 13D means the holder may push for changes.':'A 13G is a passive 5%+ stake.'} <a href="${esc(s.url)}" target="_blank" rel="noopener">Filing</a>`})});
+  ((d.institutions||{}).holders||[]).forEach(h=>{if(holders.length>=6||seen.has(key(h.name)))return;seen.add(key(h.name));
+    holders.push({name:h.name,val:h.value||1,w:.04,sub:money(h.value),rel:'Institutional holder',
+      detail:`${esc(h.name)} held ${num(h.shares)} shares worth ${money(h.value)} as of ${esc(h.date)}${h.change?`, ${h.change>0?'up':'down'} ${num(Math.abs(h.change))} shares from the prior quarter`:''}.`})});
+  holders.slice(0,6).forEach((h,i)=>n.push(Object.assign({id:'h'+i,g:'hold'},h)));
+  return n;
+}
+function custDetail(c,d){
+  const who=c.named?esc(c.name):`An unnamed customer ("${esc(c.name)}")`;
+  return `${who} accounted for ${c.pct!=null?pct(c.pct):'part'} of ${esc(d.ticker)}'s ${esc(c.benchmark)}${c.amount?`, ${c.estimated?'about ':''}${money(c.amount)}${c.estimated?' (estimated from the percent)':''}`:''} in the period ending ${esc(c.period)}.${c.named?'':' The company did not disclose the name.'} <a href="${esc(d.tenK?.url||'#')}" target="_blank" rel="noopener">10-K</a>`;
+}
+function tickerFor(name){
+  const s=name.toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/)[0];
+  if(!s||s.length<3)return '';
+  for(const [t,v] of Object.entries(INDEX)){if(v.name.toLowerCase().startsWith(s))return t}
+  return '';
+}
+
+/* ---------- lay the map out for the current width ---------- */
+const GROUPS={sup:{label:'Suppliers',hint:t=>`sell to ${t}`},cus:{label:'Customers',hint:t=>`buy from ${t}`},
+  ins:{label:'Insiders',hint:()=>'last 12 months'},hold:{label:'Big holders',hint:()=>'5%+ stakes & funds'}};
+function place(nodes,r,cellW){
+  const cols=Math.max(1,Math.min(nodes.length,Math.floor(r.w/cellW))),cw=r.w/cols;
+  nodes.forEach((nd,i)=>{nd.x=r.x+cw*(i%cols)+cw/2;nd.y=r.y+30+Math.floor(i/cols)*84+22});
+  return Math.max(1,Math.ceil(nodes.length/cols))*84+30;
+}
+function rowsH(n,w,cellW){const cols=Math.max(1,Math.min(n,Math.floor(w/cellW)));return Math.max(1,Math.ceil(n/cols))*84+30}
+function layout(W){
+  const g=k=>NODES.filter(n=>n.g===k&&SHOW[k]);
+  const sup=g('sup'),cus=g('cus'),ins=g('ins'),hold=g('hold'),R={};
+  const wide=W>=760,cellW=wide?124:112;
+  if(wide){
+    const side=W*.25,mid={x:side,w:W-2*side};
+    const hi=rowsH(ins.length,mid.w,cellW),hh=rowsH(hold.length,mid.w,cellW);
+    const H=Math.max(rowsH(sup.length,side,side),rowsH(cus.length,side,side),hi+130+hh,360);
+    R.sup={x:0,y:0,w:side,h:H};R.cus={x:W-side,y:0,w:side,h:H};
+    R.ins={x:mid.x,y:0,w:mid.w};R.hold={x:mid.x,y:H-hh,w:mid.w};
+    place(sup,R.sup,side);place(cus,R.cus,side);place(ins,R.ins,cellW);place(hold,R.hold,cellW);
+    // centre the side columns vertically
+    for(const [k,arr] of [['sup',sup],['cus',cus]]){const h=rowsH(arr.length,side,side);const off=(H-h)/2;arr.forEach(n=>n.y+=off);R[k].y=off}
+    return {H,R,cx:W/2,cy:hi+(H-hi-hh)/2,wide};
+  }
+  let y=0;const C={};
+  for(const k of ['sup','ins']){R[k]={x:0,y,w:W};y+=place(g(k),R[k],cellW)+6}
+  C.cy=y+50;y+=106;
+  for(const k of ['hold','cus']){R[k]={x:0,y,w:W};y+=place(g(k),R[k],cellW)+6}
+  return {H:y,R,cx:W/2,cy:C.cy,wide};
+}
+function draw(){
+  const box=$('mapbox');if(!box)return;
+  const W=Math.max(300,box.clientWidth),L=layout(W);
+  const vis=NODES.filter(n=>SHOW[n.g]);
+  const max={};vis.forEach(n=>max[n.g]=Math.max(max[n.g]||0,n.val||0));
+  let s=`<svg id="map" viewBox="0 0 ${W} ${L.H}" role="group" aria-label="Relationship map for ${esc(D.ticker)}">
+   <defs><marker id="arr" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0L10,5L0,10z" fill="var(--edge)"/></marker></defs>`;
+  for(const k of Object.keys(GROUPS)){
+    if(!SHOW[k])continue;const r=L.R[k];
+    s+=`<text class="gh" x="${r.x+r.w/2}" y="${r.y+12}" text-anchor="middle">${GROUPS[k].label} · <tspan style="text-transform:none;letter-spacing:0;font-weight:400">${esc(GROUPS[k].hint(D.ticker))}</tspan></text>`;
+    if(!vis.some(n=>n.g===k))s+=`<text class="none" x="${r.x+r.w/2}" y="${r.y+46}" text-anchor="middle">${k==='sup'?'None found in other 10-Ks':k==='cus'?'None disclosed in the 10-K':'None on file'}</text>`;
+  }
+  vis.forEach(n=>n.r=7+13*Math.sqrt((n.val||0)/(max[n.g]||1)));
+  for(const n of vis){
+    const out=n.g==='cus',horiz=Math.abs(n.x-L.cx)>Math.abs(n.y-L.cy)*1.2;
+    // start and end on the bubble edges, leaving the curve's direction at each end
+    const ends=(ax,ay,ar,bx,by)=>horiz?[ax+Math.sign(bx-ax)*ar,ay]:[ax,ay+Math.sign(by-ay)*ar];
+    const a=out?ends(L.cx,L.cy,40,n.x,n.y):ends(n.x,n.y,n.r+3,L.cx,L.cy),b=out?ends(n.x,n.y,n.r+3,L.cx,L.cy):ends(L.cx,L.cy,40,n.x,n.y);
+    const [x1,y1,x2,y2]=[a[0],a[1],b[0],b[1]];
+    const d=horiz?`M${x1},${y1}C${(x1+x2)/2},${y1} ${(x1+x2)/2},${y2} ${x2},${y2}`:`M${x1},${y1}C${x1},${(y1+y2)/2} ${x2},${(y1+y2)/2} ${x2},${y2}`;
+    const flow=n.g==='cus'||n.g==='sup';
+    s+=`<path class="edge${n===SEL?' sel':''}" data-id="${n.id}" d="${d}" stroke-width="${(1.2+Math.min(1,n.w*2.5)*5).toFixed(1)}" ${flow?'marker-end="url(#arr)"':'stroke-dasharray="3 4"'}/>`;
+  }
+  s+=`<g class="center"><circle cx="${L.cx}" cy="${L.cy}" r="38"/><text x="${L.cx}" y="${L.cy+5}" text-anchor="middle" font-size="15">${esc(D.ticker)}</text></g>`;
+  for(const n of vis){
+    const rad=n.r;
+    const side=L.wide&&(n.g==='sup'||n.g==='cus');
+    const fill=n.g==='ins'?(n.pos?'var(--good)':'var(--bad)'):`var(--${n.g})`;
+    s+=`<g class="node${n.anon?' anon':''}${n===SEL?' sel':''}" data-id="${n.id}" tabindex="0" role="button" aria-label="${esc(n.name)}, ${esc(n.rel)}, ${esc(n.sub)}">
+      <title>${esc(n.name)} — ${esc(n.rel)}${n.sub?' · '+esc(n.sub):''}</title>
+      <circle cx="${n.x}" cy="${n.y}" r="${n.r+8}" fill="transparent" stroke="none"/>
+      <circle cx="${n.x}" cy="${n.y}" r="${rad}" fill="${fill}"/>
+      ${n.act?`<circle cx="${n.x}" cy="${n.y}" r="${rad+4}" fill="none" stroke="var(--hold)" stroke-width="1.5" stroke-dasharray="2 2"/>`:''}
+      <text class="nm" x="${n.x}" y="${n.y+rad+16}" text-anchor="middle">${esc(trunc(n.name,side?30:L.wide?17:15))}</text>
+      <text class="sm" x="${n.x}" y="${n.y+rad+30}" text-anchor="middle">${esc(trunc(n.sub,side?34:L.wide?20:18))}</text></g>`;
+  }
+  s+='</svg>';
+  box.innerHTML=s;
+  const svg=$('map');if(SEL&&SHOW[SEL.g])svg.classList.add('dim');
+  svg.querySelectorAll('.node').forEach(g=>{const go=()=>select(g.dataset.id);g.onclick=go;g.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}}});
+}
+function select(id){
+  const n=NODES.find(x=>x.id===id);SEL=SEL===n?null:n;draw();
+  const det=$('detail');
+  if(!SEL){det.innerHTML=`<span class="r">Tap any bubble to see the relationship. Bubble size shows the dollar size within its group, and line thickness shows how much of the business it is.</span>`;return}
+  det.innerHTML=`<div class="t">${esc(SEL.name)} <span class="pill">${esc(SEL.rel)}</span></div><div class="r" style="margin-top:4px">${SEL.detail}</div>
+   ${SEL.ticker?`<div style="margin-top:6px"><a href="?t=${encodeURIComponent(SEL.ticker)}">${INDEX[SEL.ticker]?'Open':'Look up'} ${esc(SEL.ticker)} deep dive &rarr;</a></div>`:''}`;
+  const el=document.querySelector(`#map .node[data-id="${id}"]`);if(el)el.focus({preventScroll:true});
+}
+
+/* ---------- the page ---------- */
+function stat(l,v,d,cls){return `<div class="stat"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div><div class="d">${d||'&nbsp;'}</div></div>`}
+function growth(series){if(!series||series.length<2)return null;const a=series[series.length-2][1],b=series[series.length-1][1];return a?100*(b-a)/Math.abs(a):null}
+function render(d){
+  document.title=`${d.ticker} Deep Dive`;
+  const f=d.financials||{},rev=f.revenue||[],ni=f.netIncome||[],g=growth(rev),ins=d.insiders||{},si=(d.shortInterest||[]).slice(-1)[0],inst=d.institutions||{};
+  const p=d.profile||{},net=(ins.bought12m||0)-(ins.sold12m||0),acts=(d.stakes||[]).filter(s=>s.activist).length;
+  const named=d.customers.filter(c=>c.named).length,ver=d.suppliers.filter(s=>s.verified);
+  let h=`<div><h1><span class="tk">${esc(d.ticker)}</span>${esc(d.name)}</h1>
+   <p class="sub">${[p.industry,p.city,(p.exchanges||[]).join(', '),p.fiscalYearEnd?'fiscal year ends '+p.fiscalYearEnd.slice(0,2)+'/'+p.fiscalYearEnd.slice(2):''].filter(Boolean).map(esc).join(' · ')}</p>
+   <p class="sub">Built ${esc(new Date(d.updated).toLocaleDateString())} from SEC filings. <a href="${RUN_URL}" target="_blank" rel="noopener">Refresh</a></p></div>
+  <div class="stats">
+   ${stat('Revenue '+yr(rev.length?rev[rev.length-1][0]:''),money(rev.length?rev[rev.length-1][1]:null),g==null?'':`<span class="${g>=0?'up':'down'}">${g>=0?'▲':'▼'} ${Math.abs(g).toFixed(1)}%</span> vs prior year`)}
+   ${stat('Net income',money(ni.length?ni[ni.length-1][1]:null),ni.length?'fiscal '+yr(ni[ni.length-1][0]):'')}
+   ${stat('Insiders, 12 mo',(net>=0?'+':'')+money(net),`${ins.buyers12m||0} buyer${ins.buyers12m===1?'':'s'}, ${ins.sellers12m||0} seller${ins.sellers12m===1?'':'s'}`,net>0?'up':net<0?'down':'')}
+   ${stat('Short interest',si?num(si.shares):'–',si?`${si.daysToCover!=null?(+si.daysToCover).toFixed(1)+' days to cover':''}${f.sharesOutstanding?' · '+pct(100*si.shares/f.sharesOutstanding)+' of shares':''}`:'not available')}
+   ${stat('Institutions own',inst.pctHeld!=null?pct(inst.pctHeld):'–',acts?`<span class="pill act">${acts} activist${acts>1?'s':''}</span>`:'')}
+   ${stat('Supply chain',`${named}<span class="mut"> / </span>${ver.length}`,'named customers / suppliers')}
+  </div>
+  <div class="card">
+   <h2>Relationship map</h2>
+   <div class="chips" role="group" aria-label="Show groups">
+    ${Object.entries(GROUPS).map(([k,v])=>`<label class="chip"><input type="checkbox" data-g="${k}" ${SHOW[k]?'checked':''}><span class="dot" style="background:${k==='ins'?'linear-gradient(90deg,var(--good) 50%,var(--bad) 50%)':`var(--${k})`}"></span>${v.label}</label>`).join('')}
+   </div>
+   <div class="mapbox" id="mapbox"></div>
+   <div id="detail" class="card" style="margin-top:10px;background:var(--bg)"></div>
+  </div>
+  <div class="grid2">
+   <div class="card"><h2>Who buys from ${esc(d.ticker)}</h2>${custTable(d)}</div>
+   <div class="card"><h2>Who sells to ${esc(d.ticker)}</h2>${supTable(d)}</div>
+  </div>
+  <div class="grid2">
+   <div class="card"><h2>Where the money comes from</h2>${segBlock(d)}</div>
+   <div class="card"><h2>Financials (fiscal years)</h2>${finTable(f)}</div>
+  </div>
+  <div class="grid2">
+   <div class="card"><h2>Insider trades</h2>${tradeTable(ins.trades||[])}</div>
+   <div class="card"><h2>Big holders</h2>${holderTable(d)}${shortBlock(d.shortInterest||[],f.sharesOutstanding)}</div>
+  </div>
+  <p class="foot">Sources: SEC EDGAR (10-K XBRL customer and segment disclosures, other companies' 10-Ks naming ${esc(d.ticker)} as a customer, Form 4, Schedules 13D/13G, company facts), FINRA short interest, Nasdaq institutional holdings. Companies only have to name customers above 10% of revenue, and many keep the names private, so the map shows what is disclosed, not every relationship. Not investment advice.</p>`;
+  $('main').innerHTML=h;
+  NODES=buildNodes(d);SEL=null;draw();select(null);
+  document.querySelectorAll('.chip input').forEach(i=>i.onchange=()=>{SHOW[i.dataset.g]=i.checked;if(SEL&&!SHOW[SEL.g])select(null);else draw()});
+}
+const none=t=>`<div class="empty">${t}</div>`;
+function custTable(d){
+  if(!d.customers.length)return none(`${esc(d.ticker)}'s latest 10-K doesn't break out any major customers. Companies only have to when one customer is 10%+ of revenue.`);
+  return `<div class="tbl"><table><thead><tr><th>Customer</th><th>Measured by</th><th class="n">Share</th><th class="n">Amount</th></tr></thead><tbody>${d.customers.map(c=>`<tr><td>${c.named?esc(c.name):`<span class="mut">Unnamed</span> ${esc(c.name)}`}</td><td class="mut">${esc(c.benchmark)}${c.period?' · '+esc(yr(c.period)):''}</td><td class="n">${pct(c.pct)||'–'}</td><td class="n">${c.amount?(c.estimated?'≈':'')+money(c.amount):'–'}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function supTable(d){
+  const v=d.suppliers.filter(s=>s.verified),u=d.suppliers.filter(s=>!s.verified);
+  let h=v.length?`<div class="tbl"><table><thead><tr><th>Supplier</th><th class="n">${esc(d.ticker)} = % of its sales</th><th>10-K</th></tr></thead><tbody>${v.map(s=>`<tr><td>${s.ticker?`<a href="?t=${encodeURIComponent(s.ticker)}">${esc(s.ticker)}</a> `:''}${esc(s.name)}</td><td class="n">${pct(s.pct)||'–'}${s.amount?' · '+money(s.amount):''}</td><td><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.filed)}</a></td></tr>`).join('')}</tbody></table></div>`
+    :none(`No other company's recent 10-K names ${esc(d.searchName||d.ticker)} as a major customer.`);
+  if(u.length)h+=`<p class="mut" style="margin:10px 0 0">Also mention ${esc(d.searchName)} near "major customer", not confirmed: ${u.slice(0,12).map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.ticker||s.name)}</a>`).join(', ')}</p>`;
+  return h;
+}
+function segBlock(d){
+  const s=d.segments||{},names={segment:'By business segment',product:'By product or service',region:'By region'};
+  const ks=Object.keys(names).filter(k=>(s[k]||[]).length>1);
+  if(!ks.length)return none('No revenue breakdown found in the latest 10-K.');
+  return ks.map(k=>{const rows=s[k],mx=Math.max(...rows.map(r=>r.amount)),tot=rows.reduce((a,r)=>a+r.amount,0);
+    return `<div class="seg-h">${names[k]} · fiscal ${esc(yr(rows[0].period))}</div><div class="bars">${rows.map(r=>`<div class="bar" title="${esc(r.name)}: ${money(r.amount)} (${pct(100*r.amount/tot)})"><span class="nm">${esc(r.name)}</span><span class="tr"><span class="fl" style="display:block;width:${(100*r.amount/mx).toFixed(1)}%"></span></span><span class="vv">${money(r.amount)}</span></div>`).join('')}</div>`}).join('');
+}
+function finTable(f){
+  const rows=[['Revenue','revenue'],['Gross profit','grossProfit'],['Operating income','operatingIncome'],['Net income','netIncome'],['R&D','rnd'],['Cash','cash'],['Long-term debt','debt'],['Total assets','assets']].filter(([,k])=>(f[k]||[]).length);
+  if(!rows.length)return none('No annual financials in SEC company facts.');
+  const years=[...new Set(rows.flatMap(([,k])=>f[k].map(v=>v[0])))].sort().slice(-4);
+  return `<div class="tbl"><table><thead><tr><th></th>${years.map(y=>`<th class="n">FY${esc(yr(y))}</th>`).join('')}</tr></thead><tbody>${rows.map(([l,k])=>{const m=Object.fromEntries(f[k]);return `<tr><td>${l}</td>${years.map(y=>`<td class="n">${m[y]!=null?money(m[y]):'–'}</td>`).join('')}</tr>`}).join('')}</tbody></table></div>`;
+}
+function tradeTable(t){
+  if(!t.length)return none('No open-market insider buys or sells in the recent Form 4s.');
+  return `<div class="tbl"><table><thead><tr><th>Date</th><th>Insider</th><th></th><th class="n">Value</th><th class="n">Price</th></tr></thead><tbody>${t.slice(0,15).map(x=>`<tr><td class="n" style="text-align:left">${esc(x.date)}</td><td>${esc(x.owner)}<div class="mut">${esc(x.role)}</div></td><td class="${x.type==='buy'?'up':'down'}">${x.type==='buy'?'▲ Bought':'▼ Sold'}</td><td class="n"><a href="${esc(x.url)}" target="_blank" rel="noopener">${money(x.value)}</a></td><td class="n">$${(+x.price).toFixed(2)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function holderTable(d){
+  const st=d.stakes||[],ih=(d.institutions||{}).holders||[];
+  let h='';
+  if(st.length)h+=`<div class="tbl"><table><thead><tr><th>5%+ stake</th><th class="n">Owns</th><th>Filed</th></tr></thead><tbody>${st.map(s=>`<tr><td>${esc(s.holder)}<span class="pill${s.activist?' act':''}">${s.activist?'13D activist':'13G'}</span></td><td class="n">${pct(s.pct)||'–'}</td><td><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.filed)}</a></td></tr>`).join('')}</tbody></table></div>`;
+  if(ih.length)h+=`<div class="tbl" style="margin-top:${st.length?12:0}px"><table><thead><tr><th>Institution</th><th class="n">Value</th><th class="n">Qtr change</th></tr></thead><tbody>${ih.slice(0,10).map(x=>`<tr><td>${esc(x.name)}</td><td class="n">${money(x.value)}</td><td class="n ${x.change>0?'up':x.change<0?'down':''}">${x.change?(x.change>0?'+':'')+num(x.change):'–'}</td></tr>`).join('')}</tbody></table></div>`;
+  return h||none('No 13D/13G stakes in the last two years, and institutional holdings were not available.');
+}
+function shortBlock(s,out){
+  if(!s.length)return '';
+  const mx=Math.max(...s.map(x=>x.shares||0))||1,l=s[s.length-1];
+  return `<div class="seg-h" style="margin-top:14px">Short interest, last ${s.length} reports · latest ${num(l.shares)} shares${out?' ('+pct(100*l.shares/out)+' of shares)':''}</div>
+   <div class="spark" role="img" aria-label="Short interest over the last ${s.length} reports">${s.map(x=>`<i style="height:${Math.max(3,100*(x.shares||0)/mx).toFixed(0)}%" title="${esc(x.date)}: ${num(x.shares)} shares short${x.daysToCover!=null?', '+(+x.daysToCover).toFixed(1)+' days to cover':''}"></i>`).join('')}</div>
+   <div class="mut" style="display:flex;justify-content:space-between"><span>${esc(s[0].date)}</span><span>${esc(l.date)}</span></div>`;
+}
+function missing(t){
+  $('main').innerHTML=`<div class="card empty"><p style="font-size:15px;color:var(--ink);margin-top:0">No deep dive for <b>${esc(t)}</b> yet.</p>
+   <p>To build one, open <a href="${RUN_URL}" target="_blank" rel="noopener">Company deep dives on GitHub</a>, tap <b>Run workflow</b>, type <b>${esc(t)}</b>, and run it. It takes about two minutes; then reload this page.</p>
+   ${Object.keys(INDEX).length?`<p>Ready now: ${Object.keys(INDEX).sort().map(k=>`<a href="?t=${k}">${k}</a>`).join(' · ')}</p>`:''}</div>`;
+}
+async function load(){
+  try{INDEX=await (await fetch('data/company/index.json?'+Date.now(),{cache:'no-store'})).json()}catch(e){INDEX={}}
+  $('known').innerHTML=Object.entries(INDEX).map(([k,v])=>`<option value="${k}">${esc(v.name)}</option>`).join('');
+  const t=(new URLSearchParams(location.search).get('t')||'').toUpperCase().trim();
+  $('q').value=t;
+  if(!t){
+    const ks=Object.keys(INDEX).sort();
+    $('main').innerHTML=`<div class="card"><h1>Company deep dive</h1><p class="sub">Type a ticker above. ${ks.length?'Ready now:':''}</p>${ks.length?`<p>${ks.map(k=>`<a href="?t=${k}">${k}</a>`).join(' · ')}</p>`:`<p class="sub">No deep dives built yet. <a href="${RUN_URL}" target="_blank" rel="noopener">Run the workflow</a> with a ticker to make the first one.</p>`}</div>`;
+    return;
+  }
+  try{
+    const r=await fetch(`data/company/${encodeURIComponent(t)}.json?`+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw 0;D=await r.json();
+  }catch(e){return missing(t)}
+  render(D);
+}
+$('find').onsubmit=e=>{e.preventDefault();const t=$('q').value.trim().toUpperCase();if(t)location.search='?t='+encodeURIComponent(t)};
+let rz;window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{if(D)draw()},120)});
+load();
+</script>
+</body>
+</html>

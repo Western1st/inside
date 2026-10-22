@@ -129,10 +129,10 @@ const SHOW={sup:true,cus:true,ins:true,hold:true};
 function buildNodes(d){
   const n=[];
   d.customers.filter(c=>c.benchmark==='revenue'||!d.customers.some(o=>o.member===c.member&&o.benchmark==='revenue'))
-   .slice(0,8).forEach((c,i)=>n.push({id:'c'+i,g:'cus',name:c.named?c.name:'Unnamed: '+c.name,anon:!c.named,
+   .slice(0,8).forEach((c,i)=>n.push({id:'c'+i,g:'cus',name:c.name,anon:!c.named,
      val:c.amount||c.pct||1,w:(c.pct||5)/100,
      sub:[c.pct!=null?pct(c.pct)+(c.benchmark==='revenue'?' of sales':' of '+c.benchmark):'',c.amount?(c.estimated?'≈':'')+money(c.amount):''].filter(Boolean).join(' · '),
-     rel:`Buys from ${d.ticker}`,detail:custDetail(c,d),ticker:tickerFor(c.name)}));
+     rel:c.named?`Buys from ${d.ticker}`:`Buys from ${d.ticker} · name not disclosed`,detail:custDetail(c,d),ticker:tickerFor(c.name)}));
   d.suppliers.filter(s=>s.verified).slice(0,8).forEach((s,i)=>n.push({id:'s'+i,g:'sup',name:s.name,val:s.pct||1,w:(s.pct||5)/100,
      sub:[s.ticker,s.pct!=null?pct(s.pct)+' of its sales':''].filter(Boolean).join(' · '),
      rel:`Sells to ${d.ticker}`,detail:`${esc(s.name)} names ${esc(d.name)} as a major customer in its 10-K filed ${esc(s.filed)}${s.pct!=null?`: ${pct(s.pct)} of its ${esc(s.benchmark||'revenue')}`:''}${s.amount?` (${money(s.amount)})`:''}. <a href="${esc(s.url)}" target="_blank" rel="noopener">Filing</a>`,ticker:s.ticker}));
@@ -292,7 +292,7 @@ function render(d){
 const none=t=>`<div class="empty">${t}</div>`;
 function custTable(d){
   if(!d.customers.length)return none(`${esc(d.ticker)}'s latest 10-K doesn't break out any major customers. Companies only have to when one customer is 10%+ of revenue.`);
-  return `<div class="tbl"><table><thead><tr><th>Customer</th><th>Measured by</th><th class="n">Share</th><th class="n">Amount</th></tr></thead><tbody>${d.customers.map(c=>`<tr><td>${c.named?esc(c.name):`<span class="mut">Unnamed</span> ${esc(c.name)}`}</td><td class="mut">${esc(c.benchmark)}${c.period?' · '+esc(yr(c.period)):''}</td><td class="n">${pct(c.pct)||'–'}</td><td class="n">${c.amount?(c.estimated?'≈':'')+money(c.amount):'–'}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="tbl"><table><thead><tr><th>Customer</th><th>Measured by</th><th class="n">Share</th><th class="n">Amount</th></tr></thead><tbody>${d.customers.map(c=>`<tr><td>${esc(c.name)}${c.named?'':' <span class="mut">· not named</span>'}</td><td class="mut">${esc(c.benchmark)}${c.period?' · '+esc(yr(c.period)):''}</td><td class="n">${pct(c.pct)||'–'}</td><td class="n">${c.amount?(c.estimated?'≈':'')+money(c.amount):'–'}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function supTable(d){
   const v=d.suppliers.filter(s=>s.verified),u=d.suppliers.filter(s=>!s.verified);

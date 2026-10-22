@@ -64,9 +64,22 @@ def camel_words(local):
 
 
 ANON = re.compile(r"^(customer|client|vendor|supplier|distributor|partner|counterparty|reseller|"
-                  r"major customer|significant customer|largest customer|top customer)s?\s*(one|two|three|four|five|"
+                  r"major customer|significant customer|largest customer|top customer|undisclosed customer)s?\s*(one|two|three|four|five|"
                   r"[a-z]|\d+)?$|^(customer|client|vendor|supplier)s?\b.*\b(one|two|three|[a-z]|\d+)$|"
-                  r"^(one|two|three|four|five|single|largest|other|all other)\b|customers?$", re.I)
+                  r"^(one|two|three|four|five|single|largest|other|all other)\b|"
+                  r"(customers?|carriers|distributors|resellers|retailers|partners|others|vendors)$", re.I)
+
+COUNTRIES = {"US": "United States", "CN": "China", "TW": "Taiwan", "HK": "Hong Kong", "JP": "Japan", "KR": "South Korea",
+             "SG": "Singapore", "DE": "Germany", "GB": "United Kingdom", "IN": "India", "IE": "Ireland", "NL": "Netherlands",
+             "FR": "France", "CA": "Canada", "MX": "Mexico", "MY": "Malaysia", "IL": "Israel", "CH": "Switzerland"}
+
+
+def nice(member, labels):
+    """Readable name for an XBRL member, from its label when there is one."""
+    lab = labels.get(member) or ""
+    if not lab or (" " not in lab and lab.endswith("Member")):
+        lab = camel_words(member)
+    return COUNTRIES.get(lab, lab)
 
 
 def is_named(label):
@@ -192,7 +205,8 @@ def concentration(instance_xml, labels=None):
             continue
         typ = dims.get("ConcentrationRiskByTypeAxis", "")
         bench = dims.get("ConcentrationRiskByBenchmarkAxis", "")
-        kind = "supplier" if re.search(r"supplier|vendor|purchase|cost", typ + bench, re.I) else "customer"
+        kind = "supplier" if (re.search(r"supplier|vendor|purchase|cost", typ + bench, re.I)
+                                 or re.match(r"(vendor|supplier)", who, re.I)) else "customer"
         if re.search(r"accountsreceivable|receivable", bench, re.I):
             benchmark = "receivables"
         elif re.search(r"purchase|cost|supplier|vendor", bench, re.I):
@@ -201,7 +215,7 @@ def concentration(instance_xml, labels=None):
             benchmark = "revenue"
         else:
             benchmark = camel_words(bench).lower()
-        name = labels.get(who) or camel_words(who)
+        name = nice(who, labels)
         val = _num(el.text)
         if val is None:
             continue
@@ -383,13 +397,27 @@ def segments(instance_xml, labels=None):
             best[key] = (rank, val)
     out = {}
     for (kind, member), ((end, _), val) in best.items():
-        out.setdefault(kind, []).append({"name": labels.get(member) or camel_words(member),
+        out.setdefault(kind, []).append({"name": nice(member, labels),
                                          "amount": val, "period": end})
     for kind, rows in out.items():
         latest = max(r["period"] for r in rows)
-        out[kind] = sorted([r for r in rows if r["period"] == latest and r["amount"] > 0],
-                           key=lambda r: -r["amount"])[:12]
+        rows = sorted([r for r in rows if r["period"] == latest and r["amount"] > 0], key=lambda r: -r["amount"])[:12]
+        out[kind] = drop_subtotals(rows)
     return out
+
+
+def drop_subtotals(rows):
+    """Remove rows that are the sum of two or more other rows, like Apple's 'Product' or Nvidia's 'Data Center'."""
+    keep = []
+    for i, r in enumerate(rows):
+        rest = [x["amount"] for j, x in enumerate(rows) if j != i and x["amount"] < r["amount"]]
+        sums = {0.0: 0}
+        for a in rest:
+            for t, n in list(sums.items()):
+                sums.setdefault(t + a, n + 1)
+        if not any(n >= 2 and abs(t - r["amount"]) <= r["amount"] * 0.002 for t, n in sums.items()):
+            keep.append(r)
+    return keep
 
 
 # ---------- activist and large stakes (Schedules 13D and 13G) ----------
@@ -414,6 +442,9 @@ def stake_filings(cik, subs, ua, now):
         hdr = fetch(f"{folder}/{acc}.hdr.sgml", ua) or ""
         m = re.search(r"<FILED-BY>.*?<CONFORMED-NAME>([^\n<]+)", hdr, re.S)
         filer = m.group(1).strip() if m else ""
+        subj = re.search(r"<SUBJECT-COMPANY>.*?<CIK>\s*(\d+)", hdr, re.S)
+        if not subj or int(subj.group(1)) != int(cik):
+            continue
         if not filer or filer in seen:
             continue
         seen.add(filer)
@@ -425,6 +456,8 @@ def stake_filings(cik, subs, ua, now):
                 or re.search(r"percent\s+of\s+class[^%]{0,300}?([\d]{1,2}(?:\.\d+)?)\s*%", re.sub(r"<[^>]+>", " ", body), re.I | re.S)
             if m:
                 pct = _num(m.group(1))
+        if pct == 0:
+            continue   # a 0% filing reports the holder has exited
         out.append({"holder": filer.title() if filer.isupper() else filer, "form": form,
                     "activist": "13D" in form, "pct": pct, "filed": rec["filingDate"][i], "url": folder + "/"})
     return out
